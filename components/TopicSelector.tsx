@@ -11,7 +11,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({ onSelectTopic }) => {
   return (
     <div className="w-full max-w-2xl mx-auto p-4 sm:p-6">
       <div className="text-center mb-8">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-2">Trắc nghiệm Từ vựng</h1>
+        <h1 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-2">Vocab Quiz</h1>
         <p className="text-lg text-slate-600">Chọn một chủ đề để bắt đầu ôn tập!</p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

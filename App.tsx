@@ -1,6 +1,8 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import TopicSelector from './components/TopicSelector';
 import CustomTopicSetup from './components/CustomTopicSetup';
+import KeywordQuizGenerator from './components/KeywordQuizGenerator';
+import SavedTopicsManager from './components/SavedTopicsManager';
 import QuizCard from './components/QuizCard';
 import ResultsScreen from './components/ResultsScreen';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -8,8 +10,11 @@ import { GameState, QuizQuestion, VocabularyPair, QuizType, UserAnswers } from '
 import { DEFAULT_QUIZ_LENGTH, MAX_QUIZ_LENGTH } from './constants';
 import { PREDEFINED_VOCAB_LISTS } from './data/topics/_index';
 import Icon from './components/Icon';
-import { generatePhoneticsForVocabulary } from './services/geminiService';
+import { generatePhoneticsForVocabulary, generateVietnameseMeanings } from './services/geminiService';
 import QuestionSidebar from './components/QuestionSidebar';
+import EditTopic from './components/EditTopic';
+import FlashcardSetup from './components/FlashcardSetup';
+import Flashcard from './components/Flashcard';
 
 const shuffleArray = <T,>(array: T[]): T[] => {
   return [...array].sort(() => Math.random() - 0.5);
@@ -85,6 +90,14 @@ function App() {
   const [selectedTopicName, setSelectedTopicName] = useState('');
   const [customVocabList, setCustomVocabList] = useState<VocabularyPair[] | null>(null);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
+  const [originalVocabList, setOriginalVocabList] = useState<VocabularyPair[] | null>(null);
+  const [currentTopic, setCurrentTopic] = useState<string>('');
+  const [currentVocabList, setCurrentVocabList] = useState<VocabularyPair[]>([]);
+  const [editingTopic, setEditingTopic] = useState<{ name: string; vocabList: VocabularyPair[] } | null>(null);
+  const [flashcardVocabList, setFlashcardVocabList] = useState<VocabularyPair[]>([]);
+  const [flashcardTopicName, setFlashcardTopicName] = useState<string>('');
+  const [flashcardLearningMode, setFlashcardLearningMode] = useState<'en-vi' | 'vi-en'>('en-vi');
   
   const buildQuiz = (pairs: VocabularyPair[], quizType: QuizType): QuizQuestion[] => {
     const isDefinition = (text: string) => text.split(' ').length > 4 || text.includes('.') || text.includes(',');
@@ -140,6 +153,7 @@ function App() {
           englishWord: currentPair.englishWord,
           vietnameseMeaning: currentPair.vietnameseMeaning,
           phonetic: currentPair.phonetic,
+          partOfSpeech: currentPair.partOfSpeech,
       };
     });
   };
@@ -149,6 +163,10 @@ function App() {
     setError(null);
     if (topicId === 'custom') {
       setGameState('custom_topic_setup');
+    } else if (topicId === 'keyword_generator') {
+      setGameState('keyword_generator_setup');
+    } else if (topicId === 'saved_topics') {
+      setGameState('saved_topics_manager');
     } else {
       setSelectedTopic(topicId);
       setSelectedTopicName(topicName);
@@ -177,6 +195,54 @@ function App() {
     }
   }, []);
 
+  const handleSaveAsTopic = useCallback(async (topicName: string, vocabList: VocabularyPair[]) => {
+    setError(null);
+    setGameState('loading');
+    setLoadingMessage('Đang lưu chủ đề mới...');
+
+    try {
+      console.log('Saving topic:', topicName, vocabList);
+      
+      const vocabWithPhonetics = await generatePhoneticsForVocabulary(vocabList);
+      console.log('Generated phonetics:', vocabWithPhonetics);
+      
+      // Kiểm tra localStorage có hoạt động không
+      try {
+        localStorage.setItem('test', 'test');
+        localStorage.removeItem('test');
+      } catch (localStorageError) {
+        console.error('localStorage not available:', localStorageError);
+        throw new Error('Trình duyệt không hỗ trợ lưu trữ cục bộ. Vui lòng thử lại.');
+      }
+      
+      // Lưu vào localStorage
+      const savedTopics = JSON.parse(localStorage.getItem('customTopics') || '{}');
+      console.log('Current saved topics:', savedTopics);
+      
+      savedTopics[topicName] = vocabWithPhonetics;
+      localStorage.setItem('customTopics', JSON.stringify(savedTopics));
+      
+      console.log('Saved topics after update:', JSON.parse(localStorage.getItem('customTopics') || '{}'));
+      
+      setGameState('topic_selection');
+      setLoadingMessage('');
+    } catch (err) {
+      console.error("Failed to save topic:", err);
+      const errorMessage = err instanceof Error ? err.message : 'Không thể lưu chủ đề. Vui lòng thử lại.';
+      setError(`Lỗi: ${errorMessage}`);
+      setGameState('keyword_generator_setup');
+    } finally {
+      setLoadingMessage('');
+    }
+  }, []);
+
+  const handleSelectSavedTopic = useCallback((topicName: string, vocabList: VocabularyPair[]) => {
+    setSelectedTopic('saved');
+    setSelectedTopicName(topicName);
+    setCustomVocabList(vocabList);
+    setGameState('quiz_setup');
+  }, []);
+
   const handleStartQuiz = useCallback((quizType: QuizType, length: number) => {
     setGameState('loading');
     setLoadingMessage(`Đang tạo câu hỏi cho chủ đề '${selectedTopicName}'...`);
@@ -200,7 +266,12 @@ function App() {
           if (vocabList.length < 4) {
               throw new Error("Không đủ từ vựng (cần ít nhất 4) để tạo câu hỏi. Vui lòng chọn độ dài nhỏ hơn hoặc thêm từ vào danh sách.");
           }
+          
+          // Lưu danh sách gốc để làm lại
+          setOriginalVocabList(vocabList);
+          
           const processedQuestions = buildQuiz(vocabList, quizType);
+          console.log('Processed Questions:', processedQuestions);
           setQuizQuestions(processedQuestions);
           setCurrentQuestionIndex(0);
           setUserAnswers({});
@@ -232,8 +303,88 @@ function App() {
   }, [quizQuestions.length, gameState]);
 
   const handleSubmit = useCallback(() => {
+    const answeredCount = Object.keys(userAnswers).length;
+    const totalQuestions = quizQuestions.length;
+    
+    if (answeredCount < totalQuestions) {
+      setShowConfirmSubmit(true);
+    } else {
+      setGameState('results');
+    }
+  }, [userAnswers, quizQuestions.length]);
+
+  const confirmSubmit = useCallback(() => {
+    setShowConfirmSubmit(false);
     setGameState('results');
   }, []);
+
+  const cancelSubmit = useCallback(() => {
+    setShowConfirmSubmit(false);
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    if (!originalVocabList) return;
+    
+    setGameState('loading');
+    setLoadingMessage('Đang tạo lại bài kiểm tra...');
+    
+    setTimeout(() => {
+      try {
+        // Đảo vị trí từ vựng và tạo câu hỏi mới
+        const shuffledVocab = shuffleArray(originalVocabList);
+        const processedQuestions = buildQuiz(shuffledVocab, 'mixed'); // Luôn dùng mixed để đa dạng
+        setQuizQuestions(processedQuestions);
+        setCurrentQuestionIndex(0);
+        setUserAnswers({});
+        setGameState('quiz');
+      } catch (err) {
+        setError('Có lỗi khi tạo lại bài kiểm tra.');
+        setGameState('results');
+      } finally {
+        setLoadingMessage('');
+      }
+    }, 500);
+  }, [originalVocabList, buildQuiz]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (gameState !== 'quiz') return;
+      
+      switch (event.key) {
+        case 'ArrowLeft':
+          event.preventDefault();
+          if (currentQuestionIndex > 0) {
+            handleNavigate(currentQuestionIndex - 1);
+          }
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          if (currentQuestionIndex < quizQuestions.length - 1) {
+            handleNavigate(currentQuestionIndex + 1);
+          }
+          break;
+        case 'Enter':
+          event.preventDefault();
+          handleSubmit();
+          break;
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+          event.preventDefault();
+          const answerIndex = parseInt(event.key) - 1;
+          const currentQuestion = quizQuestions[currentQuestionIndex];
+          if (currentQuestion && currentQuestion.options[answerIndex]) {
+            handleAnswer(currentQuestion.options[answerIndex]);
+          }
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [gameState, currentQuestionIndex, quizQuestions.length, handleNavigate, handleSubmit, handleAnswer]);
 
   const goHome = useCallback(() => {
     setGameState('topic_selection');
@@ -257,6 +408,74 @@ function App() {
     return MAX_QUIZ_LENGTH;
   }, [selectedTopic, customVocabList]);
 
+  const handleEditTopic = useCallback((topicName: string, vocabList: VocabularyPair[]) => {
+    setEditingTopic({ name: topicName, vocabList });
+    setGameState('edit_topic');
+  }, []);
+
+  const handleUpdateTopic = useCallback(async (topicName: string, vocabList: VocabularyPair[]) => {
+    setError(null);
+    setGameState('loading');
+    setLoadingMessage('Đang cập nhật chủ đề...');
+
+    try {
+      console.log('Updating topic:', topicName, vocabList);
+      
+      const vocabWithPhonetics = await generatePhoneticsForVocabulary(vocabList);
+      console.log('Generated phonetics:', vocabWithPhonetics);
+      
+      // Kiểm tra localStorage có hoạt động không
+      try {
+        localStorage.setItem('test', 'test');
+        localStorage.removeItem('test');
+      } catch (localStorageError) {
+        console.error('localStorage not available:', localStorageError);
+        throw new Error('Trình duyệt không hỗ trợ lưu trữ cục bộ. Vui lòng thử lại.');
+      }
+      
+      // Cập nhật trong localStorage
+      const savedTopics = JSON.parse(localStorage.getItem('customTopics') || '{}');
+      console.log('Current saved topics:', savedTopics);
+      
+      savedTopics[topicName] = vocabWithPhonetics;
+      localStorage.setItem('customTopics', JSON.stringify(savedTopics));
+      
+      console.log('Saved topics after update:', JSON.parse(localStorage.getItem('customTopics') || '{}'));
+      
+      setEditingTopic(null);
+      setGameState('saved_topics_manager');
+      setLoadingMessage('');
+    } catch (err) {
+      console.error("Failed to update topic:", err);
+      const errorMessage = err instanceof Error ? err.message : 'Không thể cập nhật chủ đề. Vui lòng thử lại.';
+      setError(`Lỗi: ${errorMessage}`);
+      setGameState('edit_topic');
+    } finally {
+      setLoadingMessage('');
+    }
+  }, []);
+
+  const handleGenerateVietnamese = useCallback(async (englishWords: string[], contextDescription: string): Promise<VocabularyPair[]> => {
+    try {
+      return await generateVietnameseMeanings(englishWords, contextDescription);
+    } catch (error) {
+      console.error('Error generating Vietnamese meanings:', error);
+      throw error;
+    }
+  }, []);
+
+  const handleStartFlashcard = useCallback((topicName: string, vocabList: VocabularyPair[]) => {
+    setFlashcardTopicName(topicName);
+    setFlashcardVocabList(vocabList);
+    setGameState('flashcard_setup');
+  }, []);
+
+  const handleStartFlashcardStudy = useCallback((selectedVocabList: VocabularyPair[], learningMode: 'en-vi' | 'vi-en') => {
+    setFlashcardVocabList(selectedVocabList);
+    setFlashcardLearningMode(learningMode);
+    setGameState('flashcard');
+  }, []);
+
   const renderContent = () => {
     if (gameState === 'quiz' || gameState === 'results') {
       return (
@@ -270,7 +489,13 @@ function App() {
           />
           {gameState === 'quiz' && (
             <div className="flex-grow flex items-center gap-2 sm:gap-4">
-              <button onClick={() => handleNavigate(currentQuestionIndex - 1)} disabled={currentQuestionIndex === 0} className="p-3 rounded-full bg-white/60 backdrop-blur-sm shadow-md hover:bg-pink-100/50 disabled:opacity-30 disabled:cursor-not-allowed transition-all" aria-label="Câu trước">
+              <button 
+                onClick={() => handleNavigate(currentQuestionIndex - 1)} 
+                disabled={currentQuestionIndex === 0} 
+                className="p-3 rounded-full bg-white/60 backdrop-blur-sm shadow-md hover:bg-pink-100/50 disabled:opacity-30 disabled:cursor-not-allowed transition-all" 
+                aria-label="Câu trước"
+                title="Câu trước (←)"
+              >
                 <Icon name="ArrowLeft" className="h-6 w-6 sm:h-8 sm:w-8 text-slate-600" />
               </button>
               <div className="w-full max-w-2xl flex flex-col gap-4 flex-grow">
@@ -280,14 +505,26 @@ function App() {
                   totalQuestions={quizQuestions.length}
                   onAnswer={handleAnswer}
                   userSelection={userAnswers[currentQuestionIndex]}
+                  onNext={() => handleNavigate(currentQuestionIndex + 1)}
+                  onPrevious={() => handleNavigate(currentQuestionIndex - 1)}
                 />
                 <div className="flex justify-center items-center">
-                  <button onClick={handleSubmit} className="px-8 py-3 rounded-lg bg-pink-600 text-white font-bold hover:bg-pink-700 transition-all duration-300 text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                  <button 
+                    onClick={handleSubmit} 
+                    className="px-8 py-3 rounded-lg bg-pink-600 text-white font-bold hover:bg-pink-700 transition-all duration-300 text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                    title="Nộp bài (Enter)"
+                  >
                     Nộp bài
                   </button>
                 </div>
               </div>
-              <button onClick={() => handleNavigate(currentQuestionIndex + 1)} disabled={currentQuestionIndex === quizQuestions.length - 1} className="p-3 rounded-full bg-white/60 backdrop-blur-sm shadow-md hover:bg-pink-100/50 disabled:opacity-30 disabled:cursor-not-allowed transition-all" aria-label="Câu tiếp theo">
+              <button 
+                onClick={() => handleNavigate(currentQuestionIndex + 1)} 
+                disabled={currentQuestionIndex === quizQuestions.length - 1} 
+                className="p-3 rounded-full bg-white/60 backdrop-blur-sm shadow-md hover:bg-pink-100/50 disabled:opacity-30 disabled:cursor-not-allowed transition-all" 
+                aria-label="Câu tiếp theo"
+                title="Câu tiếp theo (→)"
+              >
                 <Icon name="ArrowRight" className="h-6 w-6 sm:h-8 sm:w-8 text-slate-600" />
               </button>
             </div>
@@ -297,6 +534,7 @@ function App() {
                  <ResultsScreen
                     questions={quizQuestions}
                     userAnswers={userAnswers}
+                    onRetry={handleRetry}
                  />
              </div>
           )}
@@ -321,7 +559,21 @@ function App() {
                         </>
                     );
                 case 'custom_topic_setup':
-                    return <CustomTopicSetup onBack={goHome} onContinue={handleCustomTopicSubmit} error={error} />;
+                    return <CustomTopicSetup onBack={goHome} onContinue={handleCustomTopicSubmit} onSaveAsTopic={handleSaveAsTopic} error={error} />;
+                case 'keyword_generator_setup':
+                    return <KeywordQuizGenerator onBack={goHome} onContinue={handleCustomTopicSubmit} onSaveAsTopic={handleSaveAsTopic} error={error} />;
+                case 'saved_topics_manager':
+                    return <SavedTopicsManager onBack={goHome} onSelectTopic={handleSelectSavedTopic} onEditTopic={handleEditTopic} onStartFlashcard={handleStartFlashcard} />;
+                case 'edit_topic':
+                    return editingTopic ? (
+                       <EditTopic 
+                         topicName={editingTopic.name} 
+                         vocabList={editingTopic.vocabList} 
+                         onBack={() => setGameState('saved_topics_manager')} 
+                         onSave={handleUpdateTopic}
+                         onGenerateVietnamese={handleGenerateVietnamese}
+                       />
+                     ) : <div>Loading...</div>;
                 case 'quiz_setup':
                     return <QuizSetup 
                         topic={selectedTopicName} 
@@ -336,6 +588,23 @@ function App() {
                         <p className="mt-4 text-lg text-slate-600">{loadingMessage}</p>
                         </div>
                     );
+                case 'flashcard_setup':
+                    return (
+                        <FlashcardSetup
+                            topicName={flashcardTopicName}
+                            vocabList={flashcardVocabList}
+                            onStart={handleStartFlashcardStudy}
+                            onBack={() => setGameState('saved_topics_manager')}
+                        />
+                    );
+                case 'flashcard':
+                    return (
+                        <Flashcard
+                            vocabList={flashcardVocabList}
+                            learningMode={flashcardLearningMode}
+                            onBack={() => setGameState('saved_topics_manager')}
+                        />
+                    );
                 default:
                     return null;
             }
@@ -345,7 +614,9 @@ function App() {
   };
 
   return (
-    <main className="min-h-screen h-screen w-full flex items-center justify-center p-4 bg-gradient-to-br from-sky-50 to-pink-50 relative">
+    <main className={`min-h-screen w-full p-4 bg-gradient-to-br from-sky-50 to-pink-50 relative ${
+      gameState === 'flashcard' ? 'flex items-start justify-center pt-8' : 'h-screen flex items-center justify-center'
+    }`}>
       {['quiz_setup', 'quiz', 'results'].includes(gameState) && (
         <button 
           onClick={goHome} 
@@ -355,6 +626,32 @@ function App() {
         </button>
       )}
       {renderContent()}
+      
+      {/* Confirm Submit Modal */}
+      {showConfirmSubmit && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 max-w-md mx-4 shadow-2xl">
+            <h3 className="text-xl font-bold text-slate-800 mb-4">Xác nhận nộp bài</h3>
+            <p className="text-slate-600 mb-6">
+              Bạn chưa trả lời hết tất cả câu hỏi. Bạn có chắc chắn muốn nộp bài không?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button 
+                onClick={cancelSubmit}
+                className="px-4 py-2 rounded-lg bg-slate-200 text-slate-800 font-semibold hover:bg-slate-300 transition-colors"
+              >
+                Tiếp tục làm bài
+              </button>
+              <button 
+                onClick={confirmSubmit}
+                className="px-4 py-2 rounded-lg bg-pink-600 text-white font-semibold hover:bg-pink-700 transition-colors"
+              >
+                Nộp bài
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

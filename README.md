@@ -57,3 +57,7 @@
 - 🔊 AI-generated phonetics
 - 📱 Responsive design
 - 🎨 Modern UI with Tailwind CSS
+- ⌨️ Keyboard shortcuts:
+  - **1, 2, 3, 4**: Chọn đáp án (từ trái sang phải, trên xuống dưới)
+  - **← →**: Chuyển câu hỏi
+  - **Enter**: Nộp bài

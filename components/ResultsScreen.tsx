@@ -7,9 +7,10 @@ import SpeakButton from './SpeakButton';
 interface ResultsScreenProps {
   questions: QuizQuestion[];
   userAnswers: UserAnswers;
+  onRetry?: () => void;
 }
 
-const ResultsScreen: React.FC<ResultsScreenProps> = ({ questions, userAnswers }) => {
+const ResultsScreen: React.FC<ResultsScreenProps> = ({ questions, userAnswers, onRetry }) => {
   const score = questions.reduce((acc, question, index) => {
     return userAnswers[index] === question.correctAnswer ? acc + 1 : acc;
   }, 0);
@@ -30,6 +31,15 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ questions, userAnswers })
         <h2 className="text-3xl font-bold text-slate-800 mb-2">Hoàn thành!</h2>
         <p className="text-xl font-semibold text-pink-600">{getFeedback()}</p>
         <p className="text-4xl font-bold text-slate-800 my-4">Điểm: {score}/{totalQuestions}</p>
+        
+        {onRetry && (
+          <button 
+            onClick={onRetry}
+            className="mt-4 px-6 py-3 rounded-lg bg-sky-600 text-white font-bold hover:bg-sky-700 transition-colors"
+          >
+            Làm lại bài này
+          </button>
+        )}
       </div>
 
       <div className="space-y-4 mb-8">
@@ -40,7 +50,12 @@ const ResultsScreen: React.FC<ResultsScreenProps> = ({ questions, userAnswers })
             <div key={index} id={`question-${index}`} className={`p-4 rounded-lg border ${isCorrect ? 'border-sky-200 bg-sky-50/70' : 'border-red-200 bg-red-50/70'}`}>
               <div className="flex items-center justify-between mb-2 flex-wrap gap-x-4 gap-y-2">
                  <div className="flex items-baseline gap-2">
-                    <p className="font-semibold text-slate-700 text-lg">{question.englishWord}</p>
+                    <p className="font-semibold text-slate-700 text-lg">
+                        {question.partOfSpeech 
+                            ? `${question.englishWord} (${question.partOfSpeech})`
+                            : question.englishWord
+                        }
+                    </p>
                     {question.phonetic && <p className="text-slate-500 font-serif">{question.phonetic}</p>}
                     <SpeakButton textToSpeak={question.englishWord} />
                 </div>
