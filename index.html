@@ -253,6 +253,14 @@
             }
           }
           
+          // Add sync status
+          if (window.SyncManager) {
+            debugInfo += `\nSync: ${window.SyncManager.isOnline ? '🟢 Online' : '🔴 Offline'}`;
+            if (window.SyncManager.userId) {
+              debugInfo += `\nUser: ${window.SyncManager.userId.slice(0, 8)}...`;
+            }
+          }
+          
           debugPanel.textContent = debugInfo;
           document.body.appendChild(debugPanel);
           
@@ -362,10 +370,141 @@
     "react/": "https://esm.sh/react@^19.1.0/",
     "@google/genai": "https://esm.sh/@google/genai@^1.9.0",
     "vite": "https://esm.sh/vite@^7.0.5",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^4.6.0"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^4.6.0",
+    "firebase/app": "https://esm.sh/firebase@^10.7.0/app",
+    "firebase/firestore": "https://esm.sh/firebase@^10.7.0/firestore",
+    "firebase/auth": "https://esm.sh/firebase@^10.7.0/auth"
   }
 }
 </script>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from 'firebase/app';
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+    import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+
+    // Firebase config (replace with your own)
+    const firebaseConfig = {
+      apiKey: "AIzaSyBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+      authDomain: "vocab-quiz-app.firebaseapp.com",
+      projectId: "vocab-quiz-app",
+      storageBucket: "vocab-quiz-app.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:abcdef123456"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    // Global sync manager
+    window.SyncManager = {
+      userId: null,
+      isOnline: false,
+      
+      async init() {
+        try {
+          // Sign in anonymously
+          const userCredential = await signInAnonymously(auth);
+          this.userId = userCredential.user.uid;
+          console.log('Signed in as:', this.userId);
+          
+          // Listen for auth state changes
+          onAuthStateChanged(auth, (user) => {
+            if (user) {
+              this.userId = user.uid;
+              this.isOnline = true;
+              this.loadFromCloud();
+              this.setupRealtimeSync();
+              console.log('User authenticated:', user.uid);
+            } else {
+              this.isOnline = false;
+              console.log('User signed out');
+            }
+          });
+          
+        } catch (error) {
+          console.error('Firebase init error:', error);
+          this.isOnline = false;
+        }
+      },
+      
+      async saveToCloud(data) {
+        if (!this.userId || !this.isOnline) return;
+        
+        try {
+          const userDoc = doc(db, 'users', this.userId);
+          await setDoc(userDoc, {
+            customTopics: data,
+            lastUpdated: new Date().toISOString()
+          });
+          console.log('Data saved to cloud');
+        } catch (error) {
+          console.error('Save to cloud error:', error);
+        }
+      },
+      
+      async loadFromCloud() {
+        if (!this.userId || !this.isOnline) return;
+        
+        try {
+          const userDoc = doc(db, 'users', this.userId);
+          const docSnap = await getDoc(userDoc);
+          
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.customTopics) {
+              localStorage.setItem('customTopics', JSON.stringify(data.customTopics));
+              console.log('Data loaded from cloud');
+              return data.customTopics;
+            }
+          }
+        } catch (error) {
+          console.error('Load from cloud error:', error);
+        }
+        return null;
+      },
+      
+      setupRealtimeSync() {
+        if (!this.userId || !this.isOnline) return;
+        
+        const userDoc = doc(db, 'users', this.userId);
+        onSnapshot(userDoc, (doc) => {
+          if (doc.exists()) {
+            const data = doc.data();
+            if (data.customTopics) {
+              localStorage.setItem('customTopics', JSON.stringify(data.customTopics));
+              console.log('Data synced in real-time');
+            }
+          }
+        });
+      },
+      
+      // Override localStorage to sync with cloud
+      setupLocalStorageSync() {
+        const originalSetItem = localStorage.setItem;
+        localStorage.setItem = (key, value) => {
+          originalSetItem.call(localStorage, key, value);
+          
+          if (key === 'customTopics') {
+            try {
+              const data = JSON.parse(value);
+              this.saveToCloud(data);
+            } catch (e) {
+              console.error('Error syncing to cloud:', e);
+            }
+          }
+        };
+      }
+    };
+
+    // Initialize sync manager
+    SyncManager.init().then(() => {
+      SyncManager.setupLocalStorageSync();
+    });
+  </script>
   <script type="module" crossorigin src="/vocab-quiz-app/assets/index-CiZBBJAF.js"></script>
   <link rel="stylesheet" crossorigin href="/vocab-quiz-app/assets/index-CwP58aj2.css">
 </head>
