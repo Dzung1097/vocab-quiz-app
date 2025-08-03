@@ -13,7 +13,143 @@
         font-family: 'Inter', sans-serif;
       }
     </style>
-
+
+    <!-- localStorage fallback for mobile -->
+    <script>
+      // Test localStorage availability
+      function testLocalStorage() {
+        try {
+          const test = '__localStorage_test__';
+          localStorage.setItem(test, test);
+          localStorage.removeItem(test);
+          return true;
+        } catch (e) {
+          console.warn('localStorage not available:', e);
+          return false;
+        }
+      }
+
+      // Check if running on mobile
+      function isMobile() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      }
+
+      // Fallback storage using sessionStorage or memory
+      if (!testLocalStorage()) {
+        console.log('Setting up localStorage fallback...');
+        
+        // Create a fallback storage object
+        const fallbackStorage = {};
+        
+        // Override localStorage methods
+        window.localStorage = {
+          getItem: function(key) {
+            return fallbackStorage[key] || null;
+          },
+          setItem: function(key, value) {
+            fallbackStorage[key] = value;
+            // Try to save to sessionStorage as backup
+            try {
+              sessionStorage.setItem(key, value);
+            } catch (e) {
+              console.warn('sessionStorage also not available');
+            }
+          },
+          removeItem: function(key) {
+            delete fallbackStorage[key];
+            try {
+              sessionStorage.removeItem(key);
+            } catch (e) {
+              console.warn('sessionStorage also not available');
+            }
+          },
+          clear: function() {
+            Object.keys(fallbackStorage).forEach(key => delete fallbackStorage[key]);
+            try {
+              sessionStorage.clear();
+            } catch (e) {
+              console.warn('sessionStorage also not available');
+            }
+          },
+          key: function(index) {
+            return Object.keys(fallbackStorage)[index] || null;
+          },
+          get length() {
+            return Object.keys(fallbackStorage).length;
+          }
+        };
+
+        // Try to load from sessionStorage on startup
+        try {
+          Object.keys(sessionStorage).forEach(key => {
+            fallbackStorage[key] = sessionStorage.getItem(key);
+          });
+        } catch (e) {
+          console.warn('Could not load from sessionStorage');
+        }
+
+        // Show warning for mobile users
+        if (isMobile()) {
+          // Create a subtle notification
+          setTimeout(() => {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+              position: fixed;
+              top: 10px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: rgba(59, 130, 246, 0.9);
+              color: white;
+              padding: 8px 16px;
+              border-radius: 20px;
+              font-size: 14px;
+              z-index: 10000;
+              backdrop-filter: blur(10px);
+              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+            notification.textContent = 'Đang sử dụng bộ nhớ tạm thời';
+            document.body.appendChild(notification);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+              if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+              }
+            }, 3000);
+          }, 1000);
+        }
+      }
+
+      // Additional mobile optimizations
+      if (isMobile()) {
+        // Prevent zoom on input focus
+        const meta = document.querySelector('meta[name="viewport"]');
+        if (meta) {
+          meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+        }
+        
+        // Add touch-friendly styles
+        const style = document.createElement('style');
+        style.textContent = `
+          @media (max-width: 768px) {
+            input, textarea, select {
+              font-size: 16px !important; /* Prevents zoom on iOS */
+            }
+            
+            button {
+              min-height: 44px; /* Touch-friendly button size */
+            }
+            
+            .touch-target {
+              min-height: 44px;
+              min-width: 44px;
+            }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    </script>
+
   <script type="importmap">
 {
   "imports": {
@@ -30,6 +166,7 @@
   <link rel="stylesheet" crossorigin href="/vocab-quiz-app/assets/index-CwP58aj2.css">
 </head>
   <body class="bg-slate-50 text-slate-900">
-    <div id="root"></div>
+    <div id="root"></div>
+
   </body>
 </html>
