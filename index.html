@@ -352,10 +352,48 @@
           testBtn.onclick = window.createTestData;
           document.body.appendChild(testBtn);
           
+          // Add Firebase test button
+          const firebaseBtn = document.createElement('button');
+          firebaseBtn.textContent = '🔥 Test Firebase';
+          firebaseBtn.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 120px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10001;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          `;
+          firebaseBtn.onclick = () => {
+            if (window.SyncManager) {
+              console.log('Firebase status:', {
+                isOnline: window.SyncManager.isOnline,
+                userId: window.SyncManager.userId,
+                auth: auth.currentUser
+              });
+              
+              if (window.SyncManager.isOnline) {
+                window.SyncManager.showNotification('🟢 Firebase connected!', 'success');
+              } else {
+                window.SyncManager.showNotification('🔴 Firebase disconnected', 'error');
+              }
+            } else {
+              alert('SyncManager not initialized');
+            }
+          };
+          document.body.appendChild(firebaseBtn);
+          
           // Remove after 30 seconds
           setTimeout(() => {
             if (testBtn.parentNode) {
               testBtn.parentNode.removeChild(testBtn);
+            }
+            if (firebaseBtn.parentNode) {
+              firebaseBtn.parentNode.removeChild(firebaseBtn);
             }
           }, 30000);
         }, 4000);
@@ -406,6 +444,8 @@
       
       async init() {
         try {
+          console.log('Initializing Firebase sync...');
+          
           // Sign in anonymously
           const userCredential = await signInAnonymously(auth);
           this.userId = userCredential.user.uid;
@@ -416,23 +456,37 @@
             if (user) {
               this.userId = user.uid;
               this.isOnline = true;
-              this.loadFromCloud();
-              this.setupRealtimeSync();
               console.log('User authenticated:', user.uid);
+              
+              // Load data and setup sync
+              this.loadFromCloud().then(() => {
+                this.setupRealtimeSync();
+              });
+              
+              // Update debug panel if exists
+              this.updateDebugPanel();
             } else {
               this.isOnline = false;
               console.log('User signed out');
+              this.updateDebugPanel();
             }
           });
           
         } catch (error) {
           console.error('Firebase init error:', error);
           this.isOnline = false;
+          this.updateDebugPanel();
+          
+          // Show error notification
+          this.showNotification('🔴 Firebase connection failed', 'error');
         }
       },
       
       async saveToCloud(data) {
-        if (!this.userId || !this.isOnline) return;
+        if (!this.userId || !this.isOnline) {
+          console.log('Cannot save to cloud - offline or no user');
+          return;
+        }
         
         try {
           const userDoc = doc(db, 'users', this.userId);
@@ -440,14 +494,19 @@
             customTopics: data,
             lastUpdated: new Date().toISOString()
           });
-          console.log('Data saved to cloud');
+          console.log('Data saved to cloud successfully');
+          this.showNotification('☁️ Data synced to cloud', 'success');
         } catch (error) {
           console.error('Save to cloud error:', error);
+          this.showNotification('❌ Sync failed', 'error');
         }
       },
       
       async loadFromCloud() {
-        if (!this.userId || !this.isOnline) return;
+        if (!this.userId || !this.isOnline) {
+          console.log('Cannot load from cloud - offline or no user');
+          return null;
+        }
         
         try {
           const userDoc = doc(db, 'users', this.userId);
@@ -457,12 +516,16 @@
             const data = docSnap.data();
             if (data.customTopics) {
               localStorage.setItem('customTopics', JSON.stringify(data.customTopics));
-              console.log('Data loaded from cloud');
+              console.log('Data loaded from cloud successfully');
+              this.showNotification('☁️ Data loaded from cloud', 'success');
               return data.customTopics;
             }
+          } else {
+            console.log('No data found in cloud');
           }
         } catch (error) {
           console.error('Load from cloud error:', error);
+          this.showNotification('❌ Failed to load from cloud', 'error');
         }
         return null;
       },
@@ -470,16 +533,23 @@
       setupRealtimeSync() {
         if (!this.userId || !this.isOnline) return;
         
-        const userDoc = doc(db, 'users', this.userId);
-        onSnapshot(userDoc, (doc) => {
-          if (doc.exists()) {
-            const data = doc.data();
-            if (data.customTopics) {
-              localStorage.setItem('customTopics', JSON.stringify(data.customTopics));
-              console.log('Data synced in real-time');
+        try {
+          const userDoc = doc(db, 'users', this.userId);
+          onSnapshot(userDoc, (doc) => {
+            if (doc.exists()) {
+              const data = doc.data();
+              if (data.customTopics) {
+                localStorage.setItem('customTopics', JSON.stringify(data.customTopics));
+                console.log('Data synced in real-time');
+                this.showNotification('🔄 Real-time sync', 'info');
+              }
             }
-          }
-        });
+          }, (error) => {
+            console.error('Realtime sync error:', error);
+          });
+        } catch (error) {
+          console.error('Setup realtime sync error:', error);
+        }
       },
       
       // Override localStorage to sync with cloud
@@ -497,6 +567,61 @@
             }
           }
         };
+      },
+      
+      updateDebugPanel() {
+        const debugPanel = document.getElementById('debug-panel');
+        if (debugPanel) {
+          const customTopics = localStorage.getItem('customTopics');
+          let debugInfo = `Storage: OK\n`;
+          debugInfo += `customTopics: ${customTopics ? 'Found' : 'Not found'}\n`;
+          
+          if (customTopics) {
+            try {
+              const parsed = JSON.parse(customTopics);
+              debugInfo += `Topics: ${Object.keys(parsed).length}\n`;
+              debugInfo += `Keys: ${Object.keys(parsed).join(', ')}`;
+            } catch (e) {
+              debugInfo += `Parse error: ${e.message}`;
+            }
+          }
+          
+          debugInfo += `\nSync: ${this.isOnline ? '🟢 Online' : '🔴 Offline'}`;
+          if (this.userId) {
+            debugInfo += `\nUser: ${this.userId.slice(0, 8)}...`;
+          }
+          
+          debugPanel.textContent = debugInfo;
+        }
+      },
+      
+      showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+          position: fixed;
+          top: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: ${type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 
+                      type === 'success' ? 'rgba(34, 197, 94, 0.9)' : 
+                      'rgba(59, 130, 246, 0.9)'};
+          color: white;
+          padding: 12px 20px;
+          border-radius: 25px;
+          font-size: 14px;
+          z-index: 10003;
+          backdrop-filter: blur(10px);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+          }
+        }, 3000);
       }
     };
 
