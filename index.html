@@ -264,6 +264,94 @@
           }, 10000);
         }, 3000);
       }
+      
+      // Add test data function
+      window.createTestData = function() {
+        const testData = {
+          "Test Topic 1": [
+            {
+              englishWord: "hello",
+              englishDescription: "A greeting",
+              vietnameseMeaning: "xin chào",
+              partOfSpeech: "interjection",
+              examples: ["Hello, how are you?"]
+            },
+            {
+              englishWord: "world",
+              englishDescription: "The earth",
+              vietnameseMeaning: "thế giới",
+              partOfSpeech: "noun",
+              examples: ["Hello world!"]
+            }
+          ],
+          "Test Topic 2": [
+            {
+              englishWord: "test",
+              englishDescription: "A trial",
+              vietnameseMeaning: "kiểm tra",
+              partOfSpeech: "noun",
+              examples: ["This is a test"]
+            }
+          ]
+        };
+        
+        localStorage.setItem('customTopics', JSON.stringify(testData));
+        console.log('Test data created:', testData);
+        
+        // Show success message
+        const msg = document.createElement('div');
+        msg.style.cssText = `
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translateX(-50%) translateY(-50%);
+          background: rgba(34, 197, 94, 0.9);
+          color: white;
+          padding: 20px;
+          border-radius: 10px;
+          font-size: 16px;
+          z-index: 10002;
+          text-align: center;
+        `;
+        msg.textContent = '✅ Đã tạo dữ liệu test!\nRefresh trang để xem';
+        document.body.appendChild(msg);
+        
+        setTimeout(() => {
+          if (msg.parentNode) {
+            msg.parentNode.removeChild(msg);
+          }
+        }, 3000);
+      };
+      
+      // Add test button for mobile
+      if (isMobile) {
+        setTimeout(() => {
+          const testBtn = document.createElement('button');
+          testBtn.textContent = '🧪 Test Data';
+          testBtn.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(59, 130, 246, 0.9);
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10001;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          `;
+          testBtn.onclick = window.createTestData;
+          document.body.appendChild(testBtn);
+          
+          // Remove after 30 seconds
+          setTimeout(() => {
+            if (testBtn.parentNode) {
+              testBtn.parentNode.removeChild(testBtn);
+            }
+          }, 30000);
+        }, 4000);
+      }
     </script>
 
   <script type="importmap">
