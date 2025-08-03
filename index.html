@@ -253,13 +253,15 @@
             }
           }
           
-          // Add sync status
-          if (window.SyncManager) {
-            debugInfo += `\nSync: ${window.SyncManager.isOnline ? '🟢 Online' : '🔴 Offline'}`;
-            if (window.SyncManager.userId) {
-              debugInfo += `\nUser: ${window.SyncManager.userId.slice(0, 8)}...`;
-            }
-          }
+                     // Add sync status
+           if (window.SimpleSync) {
+             debugInfo += `\nSync: 🟢 SimpleSync`;
+             debugInfo += `\nDevice: ${window.SimpleSync.deviceId.slice(0, 8)}...`;
+             if (window.SimpleSync.lastSync) {
+               const timeAgo = Math.floor((Date.now() - window.SimpleSync.lastSync) / 1000);
+               debugInfo += `\nLast: ${timeAgo}s ago`;
+             }
+           }
           
           debugPanel.textContent = debugInfo;
           document.body.appendChild(debugPanel);
@@ -331,6 +333,131 @@
         }, 3000);
       };
       
+      // Simple cross-device sync using localStorage
+      window.SimpleSync = {
+        deviceId: null,
+        lastSync: null,
+        
+        init() {
+          // Generate unique device ID
+          this.deviceId = localStorage.getItem('deviceId') || this.generateDeviceId();
+          localStorage.setItem('deviceId', this.deviceId);
+          
+          // Check for data from other devices
+          this.checkForUpdates();
+          
+          // Setup periodic sync
+          setInterval(() => {
+            this.syncData();
+          }, 5000); // Sync every 5 seconds
+          
+          console.log('SimpleSync initialized with device ID:', this.deviceId);
+        },
+        
+        generateDeviceId() {
+          return 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        },
+        
+        syncData() {
+          const currentData = localStorage.getItem('customTopics');
+          if (!currentData) return;
+          
+          try {
+            const parsed = JSON.parse(currentData);
+            const syncData = {
+              deviceId: this.deviceId,
+              timestamp: Date.now(),
+              data: parsed
+            };
+            
+            // Store in localStorage with device info
+            localStorage.setItem('sync_' + this.deviceId, JSON.stringify(syncData));
+            
+            // Update last sync time
+            this.lastSync = Date.now();
+            
+            console.log('Data synced for device:', this.deviceId);
+          } catch (e) {
+            console.error('Sync error:', e);
+          }
+        },
+        
+        checkForUpdates() {
+          const keys = Object.keys(localStorage);
+          const syncKeys = keys.filter(key => key.startsWith('sync_'));
+          
+          let latestData = null;
+          let latestTimestamp = 0;
+          
+          syncKeys.forEach(key => {
+            try {
+              const syncData = JSON.parse(localStorage.getItem(key));
+              if (syncData.timestamp > latestTimestamp && syncData.deviceId !== this.deviceId) {
+                latestData = syncData.data;
+                latestTimestamp = syncData.timestamp;
+              }
+            } catch (e) {
+              console.error('Error parsing sync data:', e);
+            }
+          });
+          
+          if (latestData) {
+            // Merge with current data
+            const currentData = localStorage.getItem('customTopics');
+            if (currentData) {
+              try {
+                const current = JSON.parse(currentData);
+                const merged = { ...current, ...latestData };
+                localStorage.setItem('customTopics', JSON.stringify(merged));
+                console.log('Data merged from other device');
+                
+                // Show notification
+                this.showNotification('🔄 Dữ liệu đã đồng bộ từ thiết bị khác', 'success');
+              } catch (e) {
+                console.error('Error merging data:', e);
+              }
+            } else {
+              // No current data, use the synced data
+              localStorage.setItem('customTopics', JSON.stringify(latestData));
+              console.log('Data loaded from other device');
+              this.showNotification('📱 Dữ liệu đã tải từ thiết bị khác', 'success');
+            }
+          }
+        },
+        
+        showNotification(message, type = 'info') {
+          const notification = document.createElement('div');
+          notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: ${type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 
+                        type === 'success' ? 'rgba(34, 197, 94, 0.9)' : 
+                        'rgba(59, 130, 246, 0.9)'};
+            color: white;
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            z-index: 10003;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          `;
+          notification.textContent = message;
+          document.body.appendChild(notification);
+          
+          setTimeout(() => {
+            if (notification.parentNode) {
+              notification.parentNode.removeChild(notification);
+            }
+          }, 3000);
+        }
+      };
+      
+      // Initialize simple sync
+      SimpleSync.init();
+      
       // Add test button for mobile
       if (isMobile) {
         setTimeout(() => {
@@ -352,94 +479,51 @@
           testBtn.onclick = window.createTestData;
           document.body.appendChild(testBtn);
           
-          // Add Firebase test button
-          const firebaseBtn = document.createElement('button');
-          firebaseBtn.textContent = '🔥 Test Firebase';
-          firebaseBtn.style.cssText = `
-            position: fixed;
-            bottom: 10px;
-            left: 120px;
-            background: rgba(239, 68, 68, 0.9);
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 10001;
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-          `;
-                     firebaseBtn.onclick = () => {
-             console.log('Firebase test button clicked');
-             console.log('SyncManager exists:', !!window.SyncManager);
-             console.log('Auth exists:', !!window.auth);
+                     // Add sync test button
+           const syncBtn = document.createElement('button');
+           syncBtn.textContent = '🔄 Test Sync';
+           syncBtn.style.cssText = `
+             position: fixed;
+             bottom: 10px;
+             left: 120px;
+             background: rgba(34, 197, 94, 0.9);
+             color: white;
+             padding: 10px 15px;
+             border: none;
+             border-radius: 8px;
+             font-size: 14px;
+             z-index: 10001;
+             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+           `;
+           syncBtn.onclick = () => {
+             console.log('Sync test button clicked');
              
-             if (window.SyncManager) {
-               console.log('Firebase status:', {
-                 isOnline: window.SyncManager.isOnline,
-                 userId: window.SyncManager.userId
+             if (window.SimpleSync) {
+               console.log('SimpleSync status:', {
+                 deviceId: window.SimpleSync.deviceId,
+                 lastSync: window.SimpleSync.lastSync
                });
                
-               if (window.SyncManager.isOnline) {
-                 window.SyncManager.showNotification('🟢 Firebase connected!', 'success');
-               } else {
-                 window.SyncManager.showNotification('🔴 Firebase disconnected', 'error');
-               }
+               // Force sync
+               window.SimpleSync.syncData();
+               window.SimpleSync.checkForUpdates();
+               
+               window.SimpleSync.showNotification('🔄 Đã đồng bộ dữ liệu', 'success');
              } else {
-               // Try to initialize Firebase manually
-               console.log('Trying to initialize Firebase manually...');
-               if (window.auth && window.db) {
-                 window.SyncManager = {
-                   isOnline: false,
-                   userId: null,
-                   showNotification: (msg, type) => {
-                     const notification = document.createElement('div');
-                     notification.style.cssText = `
-                       position: fixed;
-                       top: 20px;
-                       left: 50%;
-                       transform: translateX(-50%);
-                       background: ${type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(34, 197, 94, 0.9)'};
-                       color: white;
-                       padding: 12px 20px;
-                       border-radius: 25px;
-                       font-size: 14px;
-                       z-index: 10003;
-                     `;
-                     notification.textContent = msg;
-                     document.body.appendChild(notification);
-                     setTimeout(() => {
-                       if (notification.parentNode) {
-                         notification.parentNode.removeChild(notification);
-                       }
-                     }, 3000);
-                   }
-                 };
-                 
-                 // Test Firebase connection
-                 window.auth.signInAnonymously().then(() => {
-                   window.SyncManager.isOnline = true;
-                   window.SyncManager.userId = window.auth.currentUser?.uid;
-                   window.SyncManager.showNotification('🟢 Firebase connected!', 'success');
-                 }).catch(error => {
-                   console.error('Firebase auth error:', error);
-                   window.SyncManager.showNotification('🔴 Firebase auth failed: ' + error.message, 'error');
-                 });
-               } else {
-                 alert('Firebase not properly initialized. Check console for errors.');
-               }
+               alert('SimpleSync not initialized');
              }
-           };
-          document.body.appendChild(firebaseBtn);
+                      };
+           document.body.appendChild(syncBtn);
           
-          // Remove after 30 seconds
-          setTimeout(() => {
-            if (testBtn.parentNode) {
-              testBtn.parentNode.removeChild(testBtn);
-            }
-            if (firebaseBtn.parentNode) {
-              firebaseBtn.parentNode.removeChild(firebaseBtn);
-            }
-          }, 30000);
+                     // Remove after 30 seconds
+           setTimeout(() => {
+             if (testBtn.parentNode) {
+               testBtn.parentNode.removeChild(testBtn);
+             }
+             if (syncBtn.parentNode) {
+               syncBtn.parentNode.removeChild(syncBtn);
+             }
+           }, 30000);
         }, 4000);
       }
     </script>
