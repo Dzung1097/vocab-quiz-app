@@ -217,6 +217,53 @@
           console.error('Storage test failed:', e);
         }
       }, 2000);
+      
+      // Create debug panel for mobile
+      if (isMobile) {
+        setTimeout(() => {
+          const debugPanel = document.createElement('div');
+          debugPanel.id = 'debug-panel';
+          debugPanel.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 10001;
+            max-width: 200px;
+            max-height: 150px;
+            overflow: auto;
+          `;
+          
+          const customTopics = localStorage.getItem('customTopics');
+          let debugInfo = `Storage: OK\n`;
+          debugInfo += `customTopics: ${customTopics ? 'Found' : 'Not found'}\n`;
+          
+          if (customTopics) {
+            try {
+              const parsed = JSON.parse(customTopics);
+              debugInfo += `Topics: ${Object.keys(parsed).length}\n`;
+              debugInfo += `Keys: ${Object.keys(parsed).join(', ')}`;
+            } catch (e) {
+              debugInfo += `Parse error: ${e.message}`;
+            }
+          }
+          
+          debugPanel.textContent = debugInfo;
+          document.body.appendChild(debugPanel);
+          
+          // Remove after 10 seconds
+          setTimeout(() => {
+            if (debugPanel.parentNode) {
+              debugPanel.parentNode.removeChild(debugPanel);
+            }
+          }, 10000);
+        }, 3000);
+      }
     </script>
 
   <script type="importmap">
