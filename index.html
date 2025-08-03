@@ -14,130 +14,162 @@
       }
     </style>
 
-    <!-- localStorage fallback for mobile -->
+    <!-- Enhanced Storage Manager for Mobile -->
     <script>
-      // Test localStorage availability
-      function testLocalStorage() {
-        try {
-          const test = '__localStorage_test__';
-          localStorage.setItem(test, test);
-          localStorage.removeItem(test);
-          return true;
-        } catch (e) {
-          console.warn('localStorage not available:', e);
-          return false;
-        }
-      }
-
-      // Check if running on mobile
-      function isMobile() {
-        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      }
-
-      // Fallback storage using sessionStorage or memory
-      if (!testLocalStorage()) {
-        console.log('Setting up localStorage fallback...');
+      // Global storage manager
+      window.StorageManager = {
+        storage: null,
+        fallbackStorage: {},
         
-        // Create a fallback storage object
-        const fallbackStorage = {};
-        
-        // Override localStorage methods
-        window.localStorage = {
-          getItem: function(key) {
-            return fallbackStorage[key] || null;
-          },
-          setItem: function(key, value) {
-            fallbackStorage[key] = value;
-            // Try to save to sessionStorage as backup
-            try {
-              sessionStorage.setItem(key, value);
-            } catch (e) {
-              console.warn('sessionStorage also not available');
-            }
-          },
-          removeItem: function(key) {
-            delete fallbackStorage[key];
-            try {
-              sessionStorage.removeItem(key);
-            } catch (e) {
-              console.warn('sessionStorage also not available');
-            }
-          },
-          clear: function() {
-            Object.keys(fallbackStorage).forEach(key => delete fallbackStorage[key]);
-            try {
-              sessionStorage.clear();
-            } catch (e) {
-              console.warn('sessionStorage also not available');
-            }
-          },
-          key: function(index) {
-            return Object.keys(fallbackStorage)[index] || null;
-          },
-          get length() {
-            return Object.keys(fallbackStorage).length;
+        init() {
+          // Test localStorage first
+          if (this.testStorage('localStorage')) {
+            this.storage = localStorage;
+            console.log('Using localStorage');
+            return;
           }
-        };
-
-        // Try to load from sessionStorage on startup
-        try {
-          Object.keys(sessionStorage).forEach(key => {
-            fallbackStorage[key] = sessionStorage.getItem(key);
-          });
-        } catch (e) {
-          console.warn('Could not load from sessionStorage');
-        }
-
-        // Show warning for mobile users
-        if (isMobile()) {
-          // Create a subtle notification
-          setTimeout(() => {
-            const notification = document.createElement('div');
-            notification.style.cssText = `
-              position: fixed;
-              top: 10px;
-              left: 50%;
-              transform: translateX(-50%);
-              background: rgba(59, 130, 246, 0.9);
-              color: white;
-              padding: 8px 16px;
-              border-radius: 20px;
-              font-size: 14px;
-              z-index: 10000;
-              backdrop-filter: blur(10px);
-              box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            `;
-            notification.textContent = 'Đang sử dụng bộ nhớ tạm thời';
-            document.body.appendChild(notification);
-            
-            // Remove after 3 seconds
-            setTimeout(() => {
-              if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
+          
+          // Test sessionStorage
+          if (this.testStorage('sessionStorage')) {
+            this.storage = sessionStorage;
+            console.log('Using sessionStorage');
+            return;
+          }
+          
+          // Use memory fallback
+          this.storage = this.createMemoryStorage();
+          console.log('Using memory storage');
+        },
+        
+        testStorage(type) {
+          try {
+            const test = '__storage_test__';
+            const storage = window[type];
+            storage.setItem(test, test);
+            storage.removeItem(test);
+            return true;
+          } catch (e) {
+            console.warn(`${type} not available:`, e);
+            return false;
+          }
+        },
+        
+        createMemoryStorage() {
+          return {
+            getItem: (key) => this.fallbackStorage[key] || null,
+            setItem: (key, value) => {
+              this.fallbackStorage[key] = value;
+              // Try to persist to sessionStorage if available
+              try {
+                if (window.sessionStorage) {
+                  sessionStorage.setItem(key, value);
+                }
+              } catch (e) {
+                console.warn('Could not backup to sessionStorage');
               }
-            }, 3000);
-          }, 1000);
+            },
+            removeItem: (key) => {
+              delete this.fallbackStorage[key];
+              try {
+                if (window.sessionStorage) {
+                  sessionStorage.removeItem(key);
+                }
+              } catch (e) {
+                console.warn('Could not remove from sessionStorage');
+              }
+            },
+            clear: () => {
+              this.fallbackStorage = {};
+              try {
+                if (window.sessionStorage) {
+                  sessionStorage.clear();
+                }
+              } catch (e) {
+                console.warn('Could not clear sessionStorage');
+              }
+            },
+            key: (index) => Object.keys(this.fallbackStorage)[index] || null,
+            get length() {
+              return Object.keys(this.fallbackStorage).length;
+            }
+          };
+        },
+        
+        // Load any existing data from sessionStorage
+        loadFromSessionStorage() {
+          try {
+            if (window.sessionStorage) {
+              Object.keys(sessionStorage).forEach(key => {
+                this.fallbackStorage[key] = sessionStorage.getItem(key);
+              });
+            }
+          } catch (e) {
+            console.warn('Could not load from sessionStorage');
+          }
         }
-      }
-
-      // Additional mobile optimizations
-      if (isMobile()) {
-        // Prevent zoom on input focus
+      };
+      
+      // Initialize storage manager
+      StorageManager.init();
+      StorageManager.loadFromSessionStorage();
+      
+      // Override localStorage globally
+      window.localStorage = StorageManager.storage;
+      
+      // Mobile detection and optimizations
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        // Show storage status notification
+        setTimeout(() => {
+          const notification = document.createElement('div');
+          notification.style.cssText = `
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(59, 130, 246, 0.9);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 10000;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          `;
+          
+          if (StorageManager.storage === StorageManager.fallbackStorage) {
+            notification.textContent = '📱 Sử dụng bộ nhớ tạm thời';
+            notification.style.background = 'rgba(239, 68, 68, 0.9)';
+          } else {
+            notification.textContent = '✅ Bộ nhớ hoạt động bình thường';
+          }
+          
+          document.body.appendChild(notification);
+          
+          setTimeout(() => {
+            if (notification.parentNode) {
+              notification.parentNode.removeChild(notification);
+            }
+          }, 3000);
+        }, 1000);
+        
+        // Mobile UX improvements
         const meta = document.querySelector('meta[name="viewport"]');
         if (meta) {
           meta.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
         }
         
-        // Add touch-friendly styles
         const style = document.createElement('style');
         style.textContent = `
           @media (max-width: 768px) {
             input, textarea, select {
-              font-size: 16px !important; /* Prevents zoom on iOS */
+              font-size: 16px !important;
             }
             
             button {
-              min-height: 44px; /* Touch-friendly button size */
+              min-height: 44px;
             }
             
             .touch-target {
@@ -148,6 +180,43 @@
         `;
         document.head.appendChild(style);
       }
+      
+      // Debug info
+      console.log('Storage Manager initialized:', {
+        storageType: StorageManager.storage === localStorage ? 'localStorage' : 
+                     StorageManager.storage === sessionStorage ? 'sessionStorage' : 'memory',
+        isMobile: isMobile,
+        availableData: Object.keys(StorageManager.fallbackStorage)
+      });
+      
+      // Test storage functionality
+      setTimeout(() => {
+        try {
+          // Test saving data
+          localStorage.setItem('test_key', 'test_value');
+          const retrieved = localStorage.getItem('test_key');
+          console.log('Storage test:', { saved: 'test_value', retrieved });
+          
+          // Check for existing customTopics
+          const customTopics = localStorage.getItem('customTopics');
+          console.log('Existing customTopics:', customTopics);
+          
+          if (customTopics) {
+            try {
+              const parsed = JSON.parse(customTopics);
+              console.log('Parsed customTopics:', parsed);
+              console.log('Number of saved topics:', Object.keys(parsed).length);
+            } catch (e) {
+              console.error('Error parsing customTopics:', e);
+            }
+          }
+          
+          // Clean up test
+          localStorage.removeItem('test_key');
+        } catch (e) {
+          console.error('Storage test failed:', e);
+        }
+      }, 2000);
     </script>
 
   <script type="importmap">
