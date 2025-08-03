@@ -368,23 +368,67 @@
             z-index: 10001;
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
           `;
-          firebaseBtn.onclick = () => {
-            if (window.SyncManager) {
-              console.log('Firebase status:', {
-                isOnline: window.SyncManager.isOnline,
-                userId: window.SyncManager.userId,
-                auth: auth.currentUser
-              });
-              
-              if (window.SyncManager.isOnline) {
-                window.SyncManager.showNotification('🟢 Firebase connected!', 'success');
-              } else {
-                window.SyncManager.showNotification('🔴 Firebase disconnected', 'error');
-              }
-            } else {
-              alert('SyncManager not initialized');
-            }
-          };
+                     firebaseBtn.onclick = () => {
+             console.log('Firebase test button clicked');
+             console.log('SyncManager exists:', !!window.SyncManager);
+             console.log('Auth exists:', !!window.auth);
+             
+             if (window.SyncManager) {
+               console.log('Firebase status:', {
+                 isOnline: window.SyncManager.isOnline,
+                 userId: window.SyncManager.userId
+               });
+               
+               if (window.SyncManager.isOnline) {
+                 window.SyncManager.showNotification('🟢 Firebase connected!', 'success');
+               } else {
+                 window.SyncManager.showNotification('🔴 Firebase disconnected', 'error');
+               }
+             } else {
+               // Try to initialize Firebase manually
+               console.log('Trying to initialize Firebase manually...');
+               if (window.auth && window.db) {
+                 window.SyncManager = {
+                   isOnline: false,
+                   userId: null,
+                   showNotification: (msg, type) => {
+                     const notification = document.createElement('div');
+                     notification.style.cssText = `
+                       position: fixed;
+                       top: 20px;
+                       left: 50%;
+                       transform: translateX(-50%);
+                       background: ${type === 'error' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(34, 197, 94, 0.9)'};
+                       color: white;
+                       padding: 12px 20px;
+                       border-radius: 25px;
+                       font-size: 14px;
+                       z-index: 10003;
+                     `;
+                     notification.textContent = msg;
+                     document.body.appendChild(notification);
+                     setTimeout(() => {
+                       if (notification.parentNode) {
+                         notification.parentNode.removeChild(notification);
+                       }
+                     }, 3000);
+                   }
+                 };
+                 
+                 // Test Firebase connection
+                 window.auth.signInAnonymously().then(() => {
+                   window.SyncManager.isOnline = true;
+                   window.SyncManager.userId = window.auth.currentUser?.uid;
+                   window.SyncManager.showNotification('🟢 Firebase connected!', 'success');
+                 }).catch(error => {
+                   console.error('Firebase auth error:', error);
+                   window.SyncManager.showNotification('🔴 Firebase auth failed: ' + error.message, 'error');
+                 });
+               } else {
+                 alert('Firebase not properly initialized. Check console for errors.');
+               }
+             }
+           };
           document.body.appendChild(firebaseBtn);
           
           // Remove after 30 seconds
@@ -432,10 +476,15 @@
       appId: "1:715035572289:web:a0e8bc84f57e4c84dbeec0"
     };
 
-    // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
+         // Initialize Firebase
+     const app = initializeApp(firebaseConfig);
+     const db = getFirestore(app);
+     const auth = getAuth(app);
+     
+     // Make Firebase objects globally accessible
+     window.auth = auth;
+     window.db = db;
+     window.app = app;
 
     // Global sync manager
     window.SyncManager = {
